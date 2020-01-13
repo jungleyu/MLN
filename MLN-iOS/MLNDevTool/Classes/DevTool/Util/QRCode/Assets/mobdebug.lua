@@ -665,7 +665,7 @@ local function debug_hook(event, line)
        return
     end
 
-    if is_pending(server) then handle_breakpoint(server) end
+    --if is_pending(server) then handle_breakpoint(server) end
 
     local vars, status, res
     if (watchescnt > 0) then
@@ -807,7 +807,19 @@ local function debugger_loop(sev, svars, sfile, sline)
     local wx = rawget(genv, "wx") -- use rawread to make strict.lua happy
     if (wx or mobdebug.yield) and server.settimeout then server:settimeout(mobdebug.yieldtimeout) end
     while true do
-      line, err = server:receive()
+      
+      if mobdebug.shouldcontinuerun then
+         server:settimeout(0) --no poll
+         line, err = server:receive()
+         server:settimeout() --resume to poll
+
+         if not line and err == "timeout" then
+           main_thread_should_continue_run(eval_env)
+         end
+      else
+         line, err = server:receive()
+      end
+      
       if not line and err == "timeout" then
         -- yield for wx GUI applications if possible to avoid "busyness"
         app = app or (wx and wx.wxGetApp and wx.wxGetApp())
@@ -831,7 +843,8 @@ local function debugger_loop(sev, svars, sfile, sline)
         elseif mobdebug.yield then mobdebug.yield()
         end
       elseif not line and err == "closed" then
-        error("Debugger connection closed", 0)
+        --error("Debugger connection closed", 0)
+        mobdebug.done()
       else
         -- if there is something in the pending buffer, prepend it to the line
         if buf then line = buf .. line; buf = nil end
